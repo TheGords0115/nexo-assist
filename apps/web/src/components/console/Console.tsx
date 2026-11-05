@@ -159,12 +159,12 @@ export function Console({ analyst }: { analyst: SessionUser }) {
             <Search className="h-3.5 w-3.5 text-faint" />
             <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Pesquisar conversa ou chamado" className="w-full bg-transparent text-[12.5px] outline-none" />
           </label>
-          <div className="mt-3 flex gap-1 overflow-x-auto pb-2">
+          <div className="mt-3 flex flex-wrap gap-0.5 pb-2">
             {FILTERS.map((f) => (
               <button
                 key={f.key}
                 onClick={() => setFilter(f.key)}
-                className={`whitespace-nowrap rounded-md px-2 py-1 text-[11.5px] ${filter === f.key ? 'bg-brand-soft font-medium text-brand' : 'text-muted hover:bg-canvas'}`}
+                className={`whitespace-nowrap rounded-md px-1.5 py-1 text-[11px] ${filter === f.key ? 'bg-brand-soft font-medium text-brand' : 'text-muted hover:bg-canvas'}`}
               >
                 {f.label} {f.key !== 'todas' && <span className="ml-0.5">{counts[f.key]}</span>}
               </button>

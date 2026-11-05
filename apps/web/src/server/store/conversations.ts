@@ -198,7 +198,11 @@ export async function listConversations(filter: ConsoleFilter, analystId: string
   const db = await getDb()
   const where: string[] = []
   const args: string[] = []
-  if (filter === 'para_voce') where.push(`c.status = 'waiting_analyst'`)
+  // "Para você": esperando atendente + as que este analista já assumiu (como na Tela 5).
+  if (filter === 'para_voce') {
+    where.push(`(c.status = 'waiting_analyst' OR (c.status = 'with_analyst' AND c.assigned_analyst_id = ?))`)
+    args.push(analystId)
+  }
   if (filter === 'com_agent') where.push(`c.status = 'agent'`)
   if (filter === 'minhas') {
     where.push(`c.assigned_analyst_id = ?`)

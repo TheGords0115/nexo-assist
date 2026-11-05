@@ -28,6 +28,8 @@ import { transferConversation } from './actions'
 export const CONFIDENCE_THRESHOLD = 0.5
 /** Quantas mensagens anteriores vão para o modelo. Conversa longa não fica cara. */
 const HISTORY_WINDOW = 14
+/** Pedido explícito de atendimento humano (usado só quando o modelo falha). */
+const ASKED_FOR_HUMAN = /\b(analista|atendente|pessoa|humano)\b/i
 
 type Emit = (event: ChatStreamEvent) => void
 
@@ -183,7 +185,19 @@ export async function runTurn({ conversationId, employee, text, emit }: RunTurnI
   let quickReplies: string[] = []
   let decision: Decision | null = null
 
-  if (!output) {
+  if (!output && !state.transferred && ASKED_FOR_HUMAN.test(text)) {
+    // Modelo fora do ar, mas o funcionário pediu uma pessoa: transfiro sem depender do modelo.
+    state.transferred = await transferConversation(conversationId, {
+      reason: 'pedido_do_funcionario',
+      queue: 'N1',
+      summary: `Funcionário pediu um analista enquanto o assistente estava indisponível. Última mensagem: "${text}"`,
+      ticketId: null,
+      confidence: null,
+      client: state.client,
+    })
+    content = 'Certo, chamei um analista para você. Ele continua por aqui mesmo.'
+    guardrails.push({ rule: 'Falha do modelo', detail: 'Modelo indisponível; pedido de analista atendido direto pelo sistema.' })
+  } else if (!output) {
     // Falha do modelo: não deixo o funcionário sem resposta e não finjo que algo foi feito.
     content = 'Tive um problema para processar sua mensagem agora. Pode tentar de novo? Se preferir, posso chamar um analista.'
     quickReplies = ['Tentar de novo', 'Falar com um analista']

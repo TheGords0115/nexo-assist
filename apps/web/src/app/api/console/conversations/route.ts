@@ -11,16 +11,17 @@ export const GET = handle(async (req: Request) => {
   const url = new URL(req.url)
   const filterParam = url.searchParams.get('filter') as ConsoleFilter | null
   const filter = filterParam && FILTERS.includes(filterParam) ? filterParam : 'todas'
-  const [conversations, counts, mine] = await Promise.all([
+  const [conversations, counts, mine, forYou] = await Promise.all([
     listConversations(filter, analyst.id, url.searchParams.get('q') ?? ''),
     countByStatus(),
     listConversations('minhas', analyst.id),
+    listConversations('para_voce', analyst.id),
   ])
   return NextResponse.json({
     conversations,
     counts: {
       todas: counts.agent + counts.waiting_analyst + counts.with_analyst + counts.closed,
-      para_voce: counts.waiting_analyst,
+      para_voce: forYou.length,
       com_agent: counts.agent,
       minhas: mine.length,
     },
