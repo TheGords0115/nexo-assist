@@ -1,0 +1,65 @@
+@import 'tailwindcss';
+
+/* Cores e fontes tiradas do protótipo (Anexo C). */
+@theme {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-serif-display), ui-serif, Georgia, serif;
+
+  --color-ink: #111827;
+  --color-ink-soft: #374151;
+  --color-muted: #6b7280;
+  --color-faint: #9ca3af;
+  --color-line: #e5e7eb;
+  --color-line-soft: #f1f3f6;
+  --color-canvas: #f6f7f9;
+  --color-navy: #1c2433;
+  --color-navy-deep: #151b27;
+  --color-brand: #0a63c9;
+  --color-brand-dark: #0852a8;
+  --color-brand-soft: #e8f1fc;
+  --color-ok: #16a34a;
+  --color-ok-soft: #e7f6ec;
+  --color-warn: #d97706;
+  --color-warn-soft: #fdf4e3;
+  --color-danger: #dc2626;
+  --color-danger-soft: #fdecec;
+  --color-analyst-soft: #e6f4ea;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: #ffffff;
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Cursor piscando enquanto o agent escreve. */
+@keyframes caret {
+  50% {
+    opacity: 0;
+  }
+}
+.typing-caret::after {
+  content: '▍';
+  margin-left: 1px;
+  color: var(--color-faint);
+  animation: caret 1s step-end infinite;
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+.pulse-dot {
+  animation: pulse-dot 1.2s ease-in-out infinite;
+}

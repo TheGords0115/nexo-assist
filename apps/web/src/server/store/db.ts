@@ -10,7 +10,7 @@ let client: Client | null = null
 let migrated: Promise<void> | null = null
 
 export function appDbPath(): string {
-  return resolve(process.env.APP_DB_PATH ?? resolve(process.cwd(), '../../data/app.db'))
+  return resolve(/*turbopackIgnore: true*/ process.env.APP_DB_PATH ?? resolve(/*turbopackIgnore: true*/ process.cwd(), '../../data/app.db'))
 }
 
 export async function getDb(): Promise<Client> {

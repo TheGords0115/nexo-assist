@@ -1,6 +1,7 @@
 {
   "name": "nexo-assist",
   "private": true,
+  "type": "module",
   "description": "Nexo Assist: agent de atendimento do service desk de TI (desafio técnico Beyond the Bytes)",
   "workspaces": [
     "packages/*",
