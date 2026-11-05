@@ -1,0 +1,28 @@
+{
+  "name": "nexo-assist",
+  "private": true,
+  "description": "Nexo Assist: agent de atendimento do service desk de TI (desafio técnico Beyond the Bytes)",
+  "workspaces": [
+    "packages/*",
+    "services/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "setup": "npm run seed",
+    "seed": "npm run seed --workspace @nexo/tickets && npm run reset --workspace @nexo/web",
+    "dev": "concurrently -k -n tickets,web -c blue,green \"npm run dev --workspace @nexo/tickets\" \"npm run dev --workspace @nexo/web\"",
+    "build": "npm run build --workspace @nexo/web",
+    "start": "concurrently -k -n tickets,web -c blue,green \"npm run start --workspace @nexo/tickets\" \"npm run start --workspace @nexo/web\"",
+    "test": "vitest run",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "eval": "npm run eval --workspace @nexo/web"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
