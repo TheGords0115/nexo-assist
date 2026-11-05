@@ -8,3 +8,5 @@ data/*.db-*
 coverage
 next-env.d.ts
 .vercel
+apps/web/evals/results/*
+!apps/web/evals/results/.gitkeep
