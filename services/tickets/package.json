@@ -1,0 +1,23 @@
+{
+  "name": "@nexo/tickets",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Serviço de chamados simulado (sistema legado do service desk)",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts",
+    "seed": "tsx src/reset.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@libsql/client": "^0.15.15",
+    "@nexo/domain": "*",
+    "fastify": "^5.6.1",
+    "tsx": "^4.20.6",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@types/node": "^24.9.1"
+  }
+}
