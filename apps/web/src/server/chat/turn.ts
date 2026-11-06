@@ -142,6 +142,7 @@ export async function runTurn({ conversationId, employee, text, emit }: RunTurnI
   }
 
   let output: TurnOutput | null = null
+  let rateLimited = false
   let usage = { inputTokens: 0, outputTokens: 0, cachedInputTokens: 0 }
   try {
     const history = await listMessages(conversationId)
@@ -150,7 +151,11 @@ export async function runTurn({ conversationId, employee, text, emit }: RunTurnI
       requestContext: createTurnContext(state),
       structuredOutput: { schema: turnOutputSchema, jsonPromptInjection: SCHEMA_IN_PROMPT ? 'system' : false },
       maxSteps: 6,
-      modelSettings: { temperature: 0.2, maxOutputTokens: 900 },
+      // O raciocínio interno do Gemini conta no limite de saída: com pouco limite a resposta
+      // era cortada no meio. Raciocínio "low" deixa o turno mais rápido e barato, e as decisões
+      // críticas não dependem dele (estão nas tools).
+      modelSettings: { temperature: 0.2, maxOutputTokens: 2500 },
+      providerOptions: { google: { thinkingConfig: { thinkingLevel: 'low' } } },
     })
 
     // Repasse em tempo real: cada tool que termina vira um passo na tela, e o campo "resposta"
@@ -177,7 +182,8 @@ export async function runTurn({ conversationId, employee, text, emit }: RunTurnI
       cachedInputTokens: u?.cachedInputTokens ?? 0,
     }
   } catch (error) {
-    console.error('[nexo] falha no turno do agent', error)
+    rateLimited = /429|quota|rate.?limit/i.test(String((error as { message?: string })?.message ?? error))
+    console.error('[nexo] falha no turno do agent', rateLimited ? '(limite de uso do provedor)' : error)
   }
 
   const guardrails: Guardrail[] = [...state.guardrails]
@@ -199,7 +205,9 @@ export async function runTurn({ conversationId, employee, text, emit }: RunTurnI
     guardrails.push({ rule: 'Falha do modelo', detail: 'Modelo indisponível; pedido de analista atendido direto pelo sistema.' })
   } else if (!output) {
     // Falha do modelo: não deixo o funcionário sem resposta e não finjo que algo foi feito.
-    content = 'Tive um problema para processar sua mensagem agora. Pode tentar de novo? Se preferir, posso chamar um analista.'
+    content = rateLimited
+      ? 'Estou recebendo muitas mensagens agora e atingi meu limite por alguns instantes. Pode tentar de novo daqui a pouco? Se preferir, chamo um analista.'
+      : 'Tive um problema para processar sua mensagem agora. Pode tentar de novo? Se preferir, posso chamar um analista.'
     quickReplies = ['Tentar de novo', 'Falar com um analista']
     guardrails.push({ rule: 'Falha do modelo', detail: 'O modelo não respondeu no formato esperado; resposta padrão enviada.' })
   } else {

@@ -64,7 +64,6 @@ export const nexoAgent = new Agent({
  */
 const PRICES: Record<string, { input: number; output: number; cachedInput: number }> = {
   'google/gemini-3.5-flash': { input: 0.3, output: 2.5, cachedInput: 0.075 },
-  'google/gemini-2.5-flash': { input: 0.3, output: 2.5, cachedInput: 0.075 },
   'anthropic/claude-haiku-5-5': { input: 1, output: 5, cachedInput: 0.1 },
   'anthropic/claude-haiku-4-5': { input: 1, output: 5, cachedInput: 0.1 },
   'anthropic/claude-sonnet-5-5': { input: 3, output: 15, cachedInput: 0.3 },

@@ -27,6 +27,8 @@ const { SCENARIOS } = await import('./scenarios')
 type TurnResult = import('./scenarios').TurnResult
 
 const filter = process.argv[2]
+// Pausa entre turnos, para caber no limite de pedidos por minuto do plano gratuito do Gemini.
+const TURN_DELAY_MS = Number(process.env.EVAL_TURN_DELAY_MS ?? 0)
 const scenarios = SCENARIOS.filter((s) => !filter || s.id.includes(filter))
 
 interface Report {
@@ -59,6 +61,7 @@ for (const scenario of scenarios) {
   for (const text of scenario.messages) {
     const conv = await getConversation(conversation.id)
     if (conv?.status !== 'agent') break // transferiu: o agent não responde mais
+    if (TURN_DELAY_MS) await new Promise((r) => setTimeout(r, TURN_DELAY_MS))
     await runTurn({ conversationId: conversation.id, employee, text, emit: () => {} })
     const messages = await listMessages(conversation.id)
     const reply = [...messages].reverse().find((m) => m.role === 'assistant') ?? null
