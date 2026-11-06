@@ -9,11 +9,12 @@ import { createClient } from '@libsql/client'
 
 const root = resolve(import.meta.dirname, '../../..')
 process.loadEnvFile?.(resolve(root, '.env'))
-if (!process.env.ANTHROPIC_API_KEY) {
-  console.error('ANTHROPIC_API_KEY não definida no .env')
+process.env.SESSION_SECRET ??= 'x'.repeat(32)
+const { providerKeyEnv, NEXO_MODEL } = await import('@/server/agent/agent')
+if (!process.env[providerKeyEnv()]) {
+  console.error(`${providerKeyEnv()} não definida no .env (modelo ${NEXO_MODEL})`)
   process.exit(1)
 }
-process.env.SESSION_SECRET ??= 'x'.repeat(32)
 
 const { buildApp } = await import('../../../services/tickets/src/app')
 const { Chaos } = await import('../../../services/tickets/src/chaos')
@@ -93,10 +94,10 @@ const passed = reports.reduce((s, r) => s + r.passed, 0)
 const total = reports.reduce((s, r) => s + r.total, 0)
 const fullPass = reports.filter((r) => r.failures.length === 0).length
 console.log(`\nVerificações: ${passed}/${total} · cenários 100%: ${fullPass}/${reports.length}`)
-console.log(`Custo total: US$ ${reports.reduce((s, r) => s + r.costUsd, 0).toFixed(4)} · modelo ${process.env.NEXO_MODEL ?? 'anthropic/claude-haiku-5-5'}`)
+console.log(`Custo total: US$ ${reports.reduce((s, r) => s + r.costUsd, 0).toFixed(4)} · modelo ${NEXO_MODEL}`)
 
 const outDir = resolve(import.meta.dirname, 'results')
 mkdirSync(outDir, { recursive: true })
-writeFileSync(resolve(outDir, 'latest.json'), JSON.stringify({ at: new Date().toISOString(), model: process.env.NEXO_MODEL, passed, total, reports }, null, 2))
+writeFileSync(resolve(outDir, 'latest.json'), JSON.stringify({ at: new Date().toISOString(), model: NEXO_MODEL, passed, total, reports }, null, 2))
 console.log(`Detalhes (com transcrições e decisões): apps/web/evals/results/latest.json`)
 process.exit(0)

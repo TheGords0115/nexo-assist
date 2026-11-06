@@ -1,7 +1,7 @@
 import type { Employee } from '@nexo/domain'
 import { formatDateTime } from '@nexo/domain'
 import type { AgentTrace, Card, ChatMessage, ChatStreamEvent, ConversationView, Decision, Guardrail } from '@/shared/types'
-import { NEXO_MODEL, estimateCost, nexoAgent, turnOutputSchema, type TurnOutput } from '@/server/agent/agent'
+import { NEXO_MODEL, SCHEMA_IN_PROMPT, estimateCost, nexoAgent, turnOutputSchema, type TurnOutput } from '@/server/agent/agent'
 import { createTurnContext, type TurnState } from '@/server/agent/context'
 import { RUNNING_LABELS } from '@/server/agent/tools'
 import { TicketsClient } from '@/server/tickets/client'
@@ -148,7 +148,7 @@ export async function runTurn({ conversationId, employee, text, emit }: RunTurnI
     const stream = await nexoAgent.stream(toModelMessages(history), {
       system: employeeContext(employee, pending ? `${pending.draft.id} (${pending.draft.kind === 'create' ? pending.draft.title : `atualizar ${pending.draft.ticketId}`})` : null),
       requestContext: createTurnContext(state),
-      structuredOutput: { schema: turnOutputSchema },
+      structuredOutput: { schema: turnOutputSchema, jsonPromptInjection: SCHEMA_IN_PROMPT ? 'system' : false },
       maxSteps: 6,
       modelSettings: { temperature: 0.2, maxOutputTokens: 900 },
     })

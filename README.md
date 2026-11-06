@@ -6,13 +6,13 @@ Desafio técnico do processo seletivo da Beyond the Bytes.
 
 ## Como rodar
 
-Precisa de Node 22 ou mais novo e de uma chave da API da Anthropic.
+Precisa de Node 22 ou mais novo e de uma chave de API do Gemini (gratuita, em https://aistudio.google.com/apikey).
 
 ```bash
 git clone https://github.com/TheGords0115/nexo-assist.git
 cd nexo-assist
 npm install
-cp .env.example .env      # e preencha ANTHROPIC_API_KEY (e troque as duas chaves de exemplo)
+cp .env.example .env      # preencha GOOGLE_GENERATIVE_AI_API_KEY e troque as duas chaves de exemplo
 npm run seed              # cria os dados de exemplo (chamados) e zera as conversas
 npm run dev               # sobe o serviço de chamados (4001) e a aplicação (3000)
 ```
@@ -32,7 +32,7 @@ Outros comandos:
 
 ```bash
 npm test          # testes automatizados (não chamam o modelo)
-npm run eval      # cenários de conversa contra o modelo real (gasta alguns centavos de dólar)
+npm run eval      # cenários de conversa contra o modelo real (cabe no plano gratuito)
 npm run typecheck
 ```
 
@@ -55,7 +55,7 @@ packages/domain     regras de domínio puras: tipos, prioridade, prazos em horá
 Três camadas separadas:
 
 - **Interface** (React/Next.js): só conversa com a API da própria aplicação. Recebe a resposta do agent em tempo real por Server-Sent Events.
-- **Agent** (Mastra + Claude): decide o que fazer a cada mensagem usando tools. Não acessa banco nem HTTP direto; tudo passa pelas tools.
+- **Agent** (Mastra + Gemini): decide o que fazer a cada mensagem usando tools. Não acessa banco nem HTTP direto; tudo passa pelas tools.
 - **Serviços**: o serviço de chamados é **outro processo**, com outro banco, e a aplicação fala com ele por HTTP com uma chave de serviço e a identidade de quem está agindo. Ele simula o legado instável: uma parte das requisições responde 503 e às vezes ele fica fora do ar por alguns segundos (configurável no `.env`).
 
 Persistência: conversas, mensagens, rascunhos e o estado de cada conversa (com o agent, aguardando analista, com analista, encerrada) ficam em `data/app.db`; os chamados em `data/tickets.db`. Tudo sobrevive a um reinício. Ao voltar outro dia, o funcionário cai na mesma conversa.
@@ -120,17 +120,18 @@ O analista vê o mesmo detalhe no console ("ver decisão"), e a lista mostra qua
 
 ## Escolha do modelo
 
-Claude Haiku (`anthropic/claude-haiku-5-5`, configurável em `NEXO_MODEL`):
+Padrão: **Gemini Flash** (`google/gemini-3.5-flash`), configurável em `NEXO_MODEL`.
 
-- **Custo e velocidade**: atendimento de service desk tem muito volume e mensagens curtas. O Haiku responde rápido e custa uma fração dos modelos maiores.
-- **Dá para usar um modelo menor** porque as decisões que não podem errar (prioridade, duplicidade, confirmação, privacidade) não dependem dele.
-- **Bom com tools e saída estruturada**, que é o centro desse agent.
+- **Plano gratuito**: quem for avaliar o projeto consegue rodar sem gastar nada, com uma chave do Google AI Studio que sai em um minuto e não pede cartão.
+- **Rápido e bom com tools**, que é o centro desse agent.
+- **Dá para usar um modelo pequeno** porque as decisões que não podem errar (prioridade, duplicidade, confirmação, privacidade) não dependem dele.
+- **Trocar de modelo é só mudar o `.env`.** O código também suporta o Claude Haiku (`anthropic/claude-haiku-5-5`). A única diferença no código: o Gemini não aceita saída estruturada nativa junto com tools, então nele o formato da resposta vai como instrução no prompt de sistema (`SCHEMA_IN_PROMPT` em `agent.ts`).
 
-Se as evals mostrassem erro de julgamento num tipo de caso, o caminho seria trocar só o modelo no `.env` e rodar as evals de novo para comparar.
+As evals servem justamente para comparar modelos: troca o `NEXO_MODEL`, roda `npm run eval` e compara o placar e o custo.
 
 ### Custo por conversa
 
-- O prompt fixo vai com cache da Anthropic (`cacheControl`), então nas mensagens seguintes ele sai por cerca de 10% do preço.
+- O prompt fixo é o primeiro bloco de toda chamada, então entra no cache automático do Gemini (e no `cacheControl` da Anthropic, se usar Claude).
 - Histórico limitado às últimas 14 mensagens, e os cards entram resumidos em uma linha.
 - Os resultados das tools voltam compactos para o modelo.
 - Ações pelos botões (Confirmar, Cancelar) e as do analista não chamam o modelo.
