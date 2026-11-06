@@ -2,6 +2,7 @@ import { RequestContext } from '@mastra/core/request-context'
 import type { Employee } from '@nexo/domain'
 import type { Card, ConversationView, Guardrail, TraceStep } from '@/shared/types'
 import type { TicketsClient } from '@/server/tickets/client'
+import type { TurnOutput } from './output'
 
 // Estado de um turno do agent (uma mensagem do funcionário). Vai para as tools pelo RequestContext
 // do Mastra. Ponto importante de segurança: o funcionário e o cliente do serviço de chamados vêm
@@ -21,6 +22,8 @@ export interface TurnState {
   guardrails: Guardrail[]
   /** Preenchido quando uma tool transfere a conversa. */
   transferred: ConversationView | null
+  /** Resposta final do turno, preenchida pela tool "responder". */
+  final: TurnOutput | null
   /** Avisa a interface que uma tool começou (para mostrar "consultando seus chamados..."). */
   onStepStart?: (tool: string) => void
 }

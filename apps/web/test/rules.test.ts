@@ -47,6 +47,7 @@ async function turn(employee: Employee, userSeq = 1) {
     steps: [],
     guardrails: [],
     transferred: null,
+    final: null,
   }
   return { state, conversation, ctx: { requestContext: createTurnContext(state) } }
 }

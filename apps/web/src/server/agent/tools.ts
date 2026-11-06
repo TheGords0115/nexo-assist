@@ -6,6 +6,7 @@ import { createDraft, getConversation, getDraft } from '@/server/store/conversat
 import { ActionError, confirmDraft, describeTicketsError, draftSla, transferConversation } from '@/server/chat/actions'
 import { toDetail, toSummary } from '@/server/chat/tickets-view'
 import { getTurn, type TurnState } from './context'
+import { turnOutputSchema } from './output'
 
 // Tools do Nexo Assist. Cada uma faz uma coisa só e devolve um resultado curto para o modelo
 // (menos tokens = turno mais barato). As regras que não podem falhar ficam aqui, em código:
@@ -309,6 +310,22 @@ export const transferirParaAnalista = createTool({
   },
 })
 
+/**
+ * Fecha o turno: entrega a decisão e a resposta ao funcionário. O agent roda com uso de tool
+ * obrigatório e o turno para quando esta tool é chamada. Assim o modelo não consegue encerrar
+ * dizendo "vou verificar" sem ter verificado: ou chama a tool de consulta, ou responde.
+ */
+export const responder = createTool({
+  id: 'responder',
+  description:
+    'Envia a resposta final deste turno ao funcionário, com a sua decisão. Chame por último, depois de usar as ferramentas de que precisar. Nunca prometa verificar algo: verifique antes com a ferramenta certa.',
+  inputSchema: turnOutputSchema,
+  execute: async (input, ctx) => {
+    getTurn(ctx).final = input
+    return { enviado: true }
+  },
+})
+
 export const nexoTools = {
   buscar_central_ajuda: buscarCentralAjuda,
   listar_meus_chamados: listarMeusChamados,
@@ -317,6 +334,7 @@ export const nexoTools = {
   propor_atualizacao: proporAtualizacao,
   confirmar_rascunho: confirmarRascunho,
   transferir_para_analista: transferirParaAnalista,
+  responder,
 }
 
 /** Rótulo "no gerúndio" para mostrar enquanto a tool roda. */

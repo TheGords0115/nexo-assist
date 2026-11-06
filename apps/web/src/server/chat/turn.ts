@@ -1,7 +1,7 @@
 import type { Employee } from '@nexo/domain'
 import { formatDateTime } from '@nexo/domain'
 import type { AgentTrace, Card, ChatMessage, ChatStreamEvent, ConversationView, Decision, Guardrail } from '@/shared/types'
-import { NEXO_MODEL, SCHEMA_IN_PROMPT, estimateCost, nexoAgent, turnOutputSchema, type TurnOutput } from '@/server/agent/agent'
+import { NEXO_MODEL, estimateCost, nexoAgent, type TurnOutput } from '@/server/agent/agent'
 import { createTurnContext, type TurnState } from '@/server/agent/context'
 import { RUNNING_LABELS } from '@/server/agent/tools'
 import { TicketsClient } from '@/server/tickets/client'
@@ -33,7 +33,42 @@ const ASKED_FOR_HUMAN = /\b(analista|atendente|pessoa|humano)\b/i
 
 type Emit = (event: ChatStreamEvent) => void
 
+/** Lê o valor (possivelmente incompleto) de um campo texto dentro de um JSON que ainda está chegando. */
+export function partialJsonString(json: string, key: string): string {
+  const match = new RegExp(`"${key}"\\s*:\\s*"`).exec(json)
+  if (!match) return ''
+  const ESCAPES: Record<string, string> = { n: '\n', t: '\t', r: '', '"': '"', '\\': '\\', '/': '/' }
+  let out = ''
+  for (let i = match.index + match[0].length; i < json.length; i++) {
+    const c = json[i]!
+    if (c === '"') break
+    if (c !== '\\') {
+      out += c
+      continue
+    }
+    const next = json[i + 1]
+    if (next === undefined) break
+    if (next === 'u') {
+      const hex = json.slice(i + 2, i + 6)
+      if (hex.length < 4) break
+      out += String.fromCharCode(parseInt(hex, 16))
+      i += 5
+    } else {
+      out += ESCAPES[next] ?? next
+      i += 1
+    }
+  }
+  return out
+}
+
+/** A chamada de tool pode vir no formato do AI SDK ({ toolName }) ou do Mastra ({ payload: { toolName } }). */
+function isResponderCall(call: unknown): boolean {
+  const c = call as { toolName?: string; payload?: { toolName?: string } }
+  return (c.toolName ?? c.payload?.toolName) === 'responder'
+}
+
 /** Converte o histórico salvo no formato de mensagens do modelo, resumindo os cards. */
+
 type ModelMessage = { role: 'user'; content: string } | { role: 'assistant'; content: string }
 
 function toModelMessages(history: ChatMessage[]): ModelMessage[] {
@@ -138,6 +173,7 @@ export async function runTurn({ conversationId, employee, text, emit }: RunTurnI
     steps: [],
     guardrails: [],
     transferred: null,
+    final: null,
     onStepStart: (tool) => emit({ type: 'step_start', tool, label: RUNNING_LABELS[tool] ?? tool }),
   }
 
@@ -149,8 +185,11 @@ export async function runTurn({ conversationId, employee, text, emit }: RunTurnI
     const stream = await nexoAgent.stream(toModelMessages(history), {
       system: employeeContext(employee, pending ? `${pending.draft.id} (${pending.draft.kind === 'create' ? pending.draft.title : `atualizar ${pending.draft.ticketId}`})` : null),
       requestContext: createTurnContext(state),
-      structuredOutput: { schema: turnOutputSchema, jsonPromptInjection: SCHEMA_IN_PROMPT ? 'system' : false },
-      maxSteps: 6,
+      // Toda etapa precisa usar uma tool, e o turno termina na tool "responder" (ver tools.ts).
+      // Funciona igual em qualquer provedor, sem depender de saída estruturada nativa.
+      toolChoice: 'required',
+      stopWhen: ({ steps }: { steps: { toolCalls?: unknown[] }[] }) => steps.some((s) => s.toolCalls?.some(isResponderCall)),
+      maxSteps: 7,
       // O raciocínio interno do Gemini conta no limite de saída: com pouco limite a resposta
       // era cortada no meio. Raciocínio "low" deixa o turno mais rápido e barato, e as decisões
       // críticas não dependem dele (estão nas tools).
@@ -159,14 +198,16 @@ export async function runTurn({ conversationId, employee, text, emit }: RunTurnI
     })
 
     // Repasse em tempo real: cada tool que termina vira um passo na tela, e o campo "resposta"
-    // do objeto parcial vira texto aparecendo aos poucos.
+    // dos argumentos da tool "responder" vira texto aparecendo aos poucos (quando o provedor
+    // manda os argumentos em pedaços; senão o texto aparece inteiro de uma vez).
     let sentSteps = 0
     let sentText = ''
+    let responderArgs = ''
     for await (const chunk of stream.fullStream) {
       while (sentSteps < state.steps.length) emit({ type: 'step_end', step: state.steps[sentSteps++]! })
-      if (chunk.type === 'object') {
-        const partial = (chunk.object ?? {}) as Partial<TurnOutput>
-        const reply = typeof partial.resposta === 'string' ? partial.resposta : ''
+      if (chunk.type === 'tool-call-delta' && chunk.payload.toolName === 'responder') {
+        responderArgs += chunk.payload.argsTextDelta
+        const reply = partialJsonString(responderArgs, 'resposta')
         if (reply.length > sentText.length && reply.startsWith(sentText)) {
           emit({ type: 'delta', text: reply.slice(sentText.length) })
           sentText = reply
@@ -174,7 +215,7 @@ export async function runTurn({ conversationId, employee, text, emit }: RunTurnI
       }
     }
     while (sentSteps < state.steps.length) emit({ type: 'step_end', step: state.steps[sentSteps++]! })
-    output = (await stream.object) as TurnOutput
+    output = state.final
     const u = await stream.usage
     usage = {
       inputTokens: u?.inputTokens ?? 0,

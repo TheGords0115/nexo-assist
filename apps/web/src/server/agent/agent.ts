@@ -1,6 +1,4 @@
 import { Agent } from '@mastra/core/agent'
-import { z } from 'zod'
-import { INTENTS } from '@/shared/types'
 import { NEXO_INSTRUCTIONS } from './prompt'
 import { nexoTools } from './tools'
 
@@ -9,13 +7,7 @@ import { nexoTools } from './tools'
 // errar (prioridade, duplicidade, confirmação) não dependem só dele, porque estão em código.
 // Também funciona com Claude (anthropic/claude-haiku-5-5), é só trocar no .env.
 
-export const NEXO_MODEL = process.env.NEXO_MODEL ?? 'google/gemini-3.5-flash'
-
-/**
- * O Gemini não aceita saída estruturada nativa junto com tools na mesma chamada, então nele o
- * formato vai como instrução no prompt de sistema. No Claude uso o modo nativo.
- */
-export const SCHEMA_IN_PROMPT: boolean = NEXO_MODEL.startsWith('google/')
+export const NEXO_MODEL = process.env.NEXO_MODEL ?? 'google/gemini-3.5-flash-lite'
 
 /** Variável de ambiente com a chave de cada provedor (para avisar quando estiver faltando). */
 export function providerKeyEnv(model = NEXO_MODEL): string {
@@ -24,24 +16,7 @@ export function providerKeyEnv(model = NEXO_MODEL): string {
   return 'ANTHROPIC_API_KEY'
 }
 
-/**
- * Saída estruturada de cada turno: a decisão vem ANTES da resposta, para o modelo decidir e
- * depois escrever (e para a tela poder mostrar o porquê de cada resposta).
- */
-export const turnOutputSchema = z.object({
-  decisao: z.object({
-    entendimento: z.string(),
-    intencao: z.enum(INTENTS),
-    acao: z.string(),
-    confianca: z.number().min(0).max(1),
-    justificativa: z.string(),
-    regras_aplicadas: z.array(z.string()),
-  }),
-  resposta: z.string().describe('Mensagem para o funcionário, curta, sem repetir os dados dos cards'),
-  opcoes_rapidas: z.array(z.string()).max(4).describe('Respostas sugeridas, quando houver uma pergunta com opções previsíveis'),
-})
-
-export type TurnOutput = z.infer<typeof turnOutputSchema>
+export { turnOutputSchema, type TurnOutput } from './output'
 
 export const nexoAgent = new Agent({
   id: 'nexo-assist',
@@ -63,7 +38,7 @@ export const nexoAgent = new Agent({
  * Valores de referência; no plano gratuito do Gemini o custo real é zero.
  */
 const PRICES: Record<string, { input: number; output: number; cachedInput: number }> = {
-  'google/gemini-3.5-flash': { input: 0.3, output: 2.5, cachedInput: 0.075 },
+  'google/gemini-3.5-flash-lite': { input: 0.3, output: 2.5, cachedInput: 0.075 },
   'anthropic/claude-haiku-5-5': { input: 1, output: 5, cachedInput: 0.1 },
   'anthropic/claude-haiku-4-5': { input: 1, output: 5, cachedInput: 0.1 },
   'anthropic/claude-sonnet-5-5': { input: 3, output: 15, cachedInput: 0.3 },
