@@ -177,54 +177,63 @@ export async function runTurn({ conversationId, employee, text, emit }: RunTurnI
     onStepStart: (tool) => emit({ type: 'step_start', tool, label: RUNNING_LABELS[tool] ?? tool }),
   }
 
-  let output: TurnOutput | null = null
+  let output = null as TurnOutput | null
   let rateLimited = false
   let usage = { inputTokens: 0, outputTokens: 0, cachedInputTokens: 0 }
-  try {
-    const history = await listMessages(conversationId)
-    const stream = await nexoAgent.stream(toModelMessages(history), {
-      system: employeeContext(employee, pending ? `${pending.draft.id} (${pending.draft.kind === 'create' ? pending.draft.title : `atualizar ${pending.draft.ticketId}`})` : null),
-      requestContext: createTurnContext(state),
-      // Toda etapa precisa usar uma tool, e o turno termina na tool "responder" (ver tools.ts).
-      // Funciona igual em qualquer provedor, sem depender de saída estruturada nativa.
-      toolChoice: 'required',
-      stopWhen: ({ steps }: { steps: { toolCalls?: unknown[] }[] }) => steps.some((s) => s.toolCalls?.some(isResponderCall)),
-      maxSteps: 7,
-      // O raciocínio interno do Gemini conta no limite de saída: com pouco limite a resposta
-      // era cortada no meio. Raciocínio "low" deixa o turno mais rápido e barato, e as decisões
-      // críticas não dependem dele (estão nas tools).
-      modelSettings: { temperature: 0.2, maxOutputTokens: 2500 },
-      providerOptions: { google: { thinkingConfig: { thinkingLevel: 'low' } } },
-    })
+  // O provedor às vezes responde "alta demanda" (503). Se isso acontecer antes de qualquer ação,
+  // tento mais uma vez: nada foi feito ainda, então repetir é seguro.
+  for (let attempt = 0; attempt < 2 && !state.final; attempt++) {
+    if (attempt > 0) {
+      if (rateLimited || state.steps.length > 0) break
+      state.guardrails.push({ rule: 'Nova tentativa', detail: 'O modelo falhou antes de agir; o turno foi repetido uma vez.' })
+      await new Promise((r) => setTimeout(r, 1500))
+    }
+    try {
+      const history = await listMessages(conversationId)
+      const stream = await nexoAgent.stream(toModelMessages(history), {
+        system: employeeContext(employee, pending ? `${pending.draft.id} (${pending.draft.kind === 'create' ? pending.draft.title : `atualizar ${pending.draft.ticketId}`})` : null),
+        requestContext: createTurnContext(state),
+        // Toda etapa precisa usar uma tool, e o turno termina na tool "responder" (ver tools.ts).
+        // Funciona igual em qualquer provedor, sem depender de saída estruturada nativa.
+        toolChoice: 'required',
+        stopWhen: ({ steps }: { steps: { toolCalls?: unknown[] }[] }) => steps.some((s) => s.toolCalls?.some(isResponderCall)),
+        maxSteps: 7,
+        // O raciocínio interno do Gemini conta no limite de saída: com pouco limite a resposta
+        // era cortada no meio. Raciocínio "low" deixa o turno mais rápido e barato, e as decisões
+        // críticas não dependem dele (estão nas tools).
+        modelSettings: { temperature: 0.2, maxOutputTokens: 2500 },
+        providerOptions: { google: { thinkingConfig: { thinkingLevel: 'low' } } },
+      })
 
-    // Repasse em tempo real: cada tool que termina vira um passo na tela, e o campo "resposta"
-    // dos argumentos da tool "responder" vira texto aparecendo aos poucos (quando o provedor
-    // manda os argumentos em pedaços; senão o texto aparece inteiro de uma vez).
-    let sentSteps = 0
-    let sentText = ''
-    let responderArgs = ''
-    for await (const chunk of stream.fullStream) {
-      while (sentSteps < state.steps.length) emit({ type: 'step_end', step: state.steps[sentSteps++]! })
-      if (chunk.type === 'tool-call-delta' && chunk.payload.toolName === 'responder') {
-        responderArgs += chunk.payload.argsTextDelta
-        const reply = partialJsonString(responderArgs, 'resposta')
-        if (reply.length > sentText.length && reply.startsWith(sentText)) {
-          emit({ type: 'delta', text: reply.slice(sentText.length) })
-          sentText = reply
+      // Repasse em tempo real: cada tool que termina vira um passo na tela, e o campo "resposta"
+      // dos argumentos da tool "responder" vira texto aparecendo aos poucos (quando o provedor
+      // manda os argumentos em pedaços; senão o texto aparece inteiro de uma vez).
+      let sentSteps = 0
+      let sentText = ''
+      let responderArgs = ''
+      for await (const chunk of stream.fullStream) {
+        while (sentSteps < state.steps.length) emit({ type: 'step_end', step: state.steps[sentSteps++]! })
+        if (chunk.type === 'tool-call-delta' && chunk.payload.toolName === 'responder') {
+          responderArgs += chunk.payload.argsTextDelta
+          const reply = partialJsonString(responderArgs, 'resposta')
+          if (reply.length > sentText.length && reply.startsWith(sentText)) {
+            emit({ type: 'delta', text: reply.slice(sentText.length) })
+            sentText = reply
+          }
         }
       }
+      while (sentSteps < state.steps.length) emit({ type: 'step_end', step: state.steps[sentSteps++]! })
+      output = state.final
+      const u = await stream.usage
+      usage = {
+        inputTokens: u?.inputTokens ?? 0,
+        outputTokens: u?.outputTokens ?? 0,
+        cachedInputTokens: u?.cachedInputTokens ?? 0,
+      }
+    } catch (error) {
+      rateLimited = /429|quota|rate.?limit/i.test(String((error as { message?: string })?.message ?? error))
+      console.error('[nexo] falha no turno do agent', rateLimited ? '(limite de uso do provedor)' : error)
     }
-    while (sentSteps < state.steps.length) emit({ type: 'step_end', step: state.steps[sentSteps++]! })
-    output = state.final
-    const u = await stream.usage
-    usage = {
-      inputTokens: u?.inputTokens ?? 0,
-      outputTokens: u?.outputTokens ?? 0,
-      cachedInputTokens: u?.cachedInputTokens ?? 0,
-    }
-  } catch (error) {
-    rateLimited = /429|quota|rate.?limit/i.test(String((error as { message?: string })?.message ?? error))
-    console.error('[nexo] falha no turno do agent', rateLimited ? '(limite de uso do provedor)' : error)
   }
 
   const guardrails: Guardrail[] = [...state.guardrails]

@@ -32,7 +32,7 @@ Outros comandos:
 
 ```bash
 npm test          # testes automatizados (não chamam o modelo)
-npm run eval      # cenários de conversa contra o modelo real (cabe no plano gratuito)
+EVAL_TURN_DELAY_MS=13000 npm run eval   # cenários contra o modelo real; a pausa respeita o limite por minuto do plano gratuito
 npm run typecheck
 ```
 
@@ -70,7 +70,7 @@ Persistência: conversas, mensagens, rascunhos e o estado de cada conversa (com 
 
 ## Como o agent decide o que fazer
 
-O agent tem 7 tools (`apps/web/src/server/agent/tools.ts`):
+O agent tem 7 tools de trabalho e a `responder`, que fecha o turno (`apps/web/src/server/agent/tools.ts`):
 
 | Tool | Para quê |
 |---|---|
@@ -84,7 +84,7 @@ O agent tem 7 tools (`apps/web/src/server/agent/tools.ts`):
 
 O prompt (`apps/web/src/server/agent/prompt.ts`) descreve a condução: buscar na central antes de abrir chamado, checar chamados existentes, perguntar uma coisa por vez com opções rápidas, mostrar rascunho e esperar confirmação, oferecer analista em chamado vencido e redirecionar o que não é de TI.
 
-Cada turno termina com uma **saída estruturada** (`turnOutputSchema` em `agent.ts`): primeiro a `decisao` (entendimento, intenção, ação, confiança de 0 a 1, justificativa e regras aplicadas), depois a `resposta` e as `opcoes_rapidas`. A decisão vem antes de propósito: o modelo decide e depois escreve.
+Cada turno termina com a tool **`responder`** (schema em `server/agent/output.ts`): primeiro a `decisao` (entendimento, intenção, ação, confiança de 0 a 1, justificativa e regras aplicadas), depois a `resposta` e as `opcoes_rapidas`. A decisão vem antes de propósito: o modelo decide e depois escreve.
 
 ### O que não depende do modelo
 
@@ -112,22 +112,48 @@ O analista vê o mesmo detalhe no console ("ver decisão"), e a lista mostra qua
 
 ## Como garanti a qualidade das decisões
 
-1. **Regras críticas em código, com testes** (`npm test`, 42 testes): prioridade e prazos (inclusive virada de dia e fim de semana), privacidade no serviço, reabertura em 7 dias, duplicidade, confirmação só em turno seguinte, crítico indo para analista, agent pausado, limite de mensagens, retry do cliente. Os testes das tools sobem o serviço de chamados de verdade, em memória.
+1. **Regras críticas em código, com testes** (`npm test`, 46 testes): prioridade e prazos (inclusive virada de dia e fim de semana), privacidade no serviço, reabertura em 7 dias, duplicidade, confirmação só em turno seguinte, crítico indo para analista, agent pausado, limite de mensagens, retry do cliente. Os testes das tools sobem o serviço de chamados de verdade, em memória.
 2. **Evals contra o modelo** (`npm run eval`, `apps/web/evals`): 12 conversas roteirizadas que verificam a **decisão**, não o texto. Por exemplo: o erro 809 no Windows 10 se resolve pela central sem chamado, mas no Windows 11 vira chamado com prioridade alta por causa da reunião; status sem número mostra a lista para escolher; lentidão com o INC-20311 aberto não pode virar chamado novo; o Outlook resolvido há 3 dias deve ser reaberto; o pedido de férias vai para o RH; o chamado de outra pessoa não vaza. Cada execução salva as transcrições e as decisões em `apps/web/evals/results/latest.json`.
 3. **Teste manual** das telas e do fluxo analista ↔ funcionário.
 
-<!-- RESULTADO_EVALS -->
+### Resultado das evals
+
+Última rodada completa com `google/gemini-3.5-flash-lite` (plano gratuito):
+
+| Cenário | Resultado |
+|---|---|
+| Dúvida resolvida pela central (Windows 10, erro 809) | 5/5 |
+| Abrir chamado conversando (Windows 11, reunião às 14h → Alta) | 5/5 |
+| Consulta sem número, chamado vencido | 6/6 |
+| Transferência por chamado vencido | 3/3 |
+| Sem duplicidade (lentidão com o INC-20311 aberto) | 3/3 |
+| Complementar chamado existente | 3/3 |
+| Reabrir resolvido há 3 dias | 3/3 |
+| Fora do escopo (férias → RH) | 4/4 |
+| Privacidade (chamado de outra pessoa) | 2/2 |
+| Pedido de analista | 3/3 |
+| Caso crítico (expedição parada) | 1/1 |
+| Pergunta quando falta informação | 3/3 |
+
+Na rodada completa deu 39/41: o cenário da central caiu porque o Google respondeu "alta demanda" naquele turno. Rodando de novo, passou 5/5. Depois disso coloquei uma nova tentativa automática quando o modelo falha antes de qualquer ação (`turn.ts`). O custo de referência da rodada inteira, pelo preço do plano pago, foi de uns US$ 0,04; no plano gratuito sai zero.
 
 ## Escolha do modelo
 
-Padrão: **Gemini Flash** (`google/gemini-3.5-flash`), configurável em `NEXO_MODEL`.
+Padrão: **Gemini Flash Lite** (`google/gemini-3.5-flash-lite`), configurável em `NEXO_MODEL`.
 
-- **Plano gratuito**: quem for avaliar o projeto consegue rodar sem gastar nada, com uma chave do Google AI Studio que sai em um minuto e não pede cartão.
-- **Rápido e bom com tools**, que é o centro desse agent.
+- **Plano gratuito**: quem for avaliar o projeto consegue rodar sem gastar nada, com uma chave do Google AI Studio que sai em um minuto e não pede cartão. Escolhi o Lite porque, no plano gratuito, o Flash normal libera só 20 pedidos por dia, e cada mensagem do chat usa de 2 a 4 pedidos (um por ferramenta).
 - **Dá para usar um modelo pequeno** porque as decisões que não podem errar (prioridade, duplicidade, confirmação, privacidade) não dependem dele.
-- **Trocar de modelo é só mudar o `.env`.** O código também suporta o Claude Haiku (`anthropic/claude-haiku-5-5`). A única diferença no código: o Gemini não aceita saída estruturada nativa junto com tools, então nele o formato da resposta vai como instrução no prompt de sistema (`SCHEMA_IN_PROMPT` em `agent.ts`).
+- **Trocar de modelo é só mudar o `.env`**: `google/gemini-3.5-flash` (melhor, com cota gratuita pequena) ou `anthropic/claude-haiku-5-5` (pago).
 
-As evals servem justamente para comparar modelos: troca o `NEXO_MODEL`, roda `npm run eval` e compara o placar e o custo.
+### Como o turno termina (e por que funciona em qualquer modelo)
+
+No começo eu usava saída estruturada (schema da resposta). O Gemini não aceita schema nativo junto com tools, e com o schema no prompt o modelo Lite às vezes respondia "vou verificar seus chamados" e encerrava o turno **sem verificar**. A solução foi transformar a resposta final numa tool, `responder` (`server/agent/tools.ts`):
+
+- o agent roda com uso de tool obrigatório (`toolChoice: 'required'`), então cada etapa ou consulta algo ou responde;
+- o turno para quando `responder` é chamada (`stopWhen`), e o input dela é a decisão + a resposta;
+- o texto continua aparecendo aos poucos: leio o campo `resposta` dos argumentos da tool enquanto eles chegam.
+
+Isso não depende de recurso específico de um provedor.
 
 ### Custo por conversa
 
@@ -143,7 +169,8 @@ As evals servem justamente para comparar modelos: troca o `NEXO_MODEL`, roda `np
 - **Busca por palavras-chave na central** em vez de embeddings: com 9 artigos, embeddings custariam uma chamada a mais por pergunta. A tool só conhece `searchArticles`, então dá para trocar depois.
 - **Histórico próprio em vez da Memory do Mastra**: eu já precisava guardar as mensagens com cards e trace para a tela, então monto o histórico a partir do meu banco e controlo o tamanho (custo).
 - **Polling em vez de WebSocket** no console e enquanto o analista atende (a cada 3-4 s). É simples e suficiente para a demo; em produção eu usaria SSE ou WebSocket.
-- **Saída estruturada com a decisão** custa alguns tokens a mais por turno, mas é o que permite mostrar o porquê de cada resposta e transferir por baixa confiança.
+- **A decisão em todo turno** (dentro da `responder`) custa alguns tokens a mais, mas é o que permite mostrar o porquê de cada resposta e transferir por baixa confiança.
+- **Plano gratuito do Gemini** tem limite de pedidos por minuto: com muita gente usando ao mesmo tempo, o chat avisa que atingiu o limite e pede para tentar de novo. Para produção, um plano pago ou outro provedor resolve só trocando o `.env`.
 - **Login simplificado**: qualquer senha para as contas de exemplo, como o PRD pede. A sessão é um cookie HMAC sem estado no servidor.
 - **libSQL em arquivo**: roda local sem instalar banco e, para um deploy, a mesma lib conecta no Turso só trocando a URL.
 
