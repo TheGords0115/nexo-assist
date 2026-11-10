@@ -1,7 +1,7 @@
 import type { Employee } from '@nexo/domain'
 import { formatDateTime } from '@nexo/domain'
 import type { AgentTrace, Card, ChatMessage, ChatStreamEvent, ConversationView, Decision, Guardrail } from '@/shared/types'
-import { NEXO_MODEL, estimateCost, nexoAgent, type TurnOutput } from '@/server/agent/agent'
+import { NEXO_MODEL, estimateCost, nexoAgent, providerKeyEnv, type TurnOutput } from '@/server/agent/agent'
 import { createTurnContext, type TurnState } from '@/server/agent/context'
 import { RUNNING_LABELS } from '@/server/agent/tools'
 import { TicketsClient } from '@/server/tickets/client'
@@ -179,10 +179,12 @@ export async function runTurn({ conversationId, employee, text, emit }: RunTurnI
 
   let output = null as TurnOutput | null
   let rateLimited = false
+  // Sem chave do provedor no .env nem tento chamar o modelo: aviso o que falta configurar.
+  const missingKey = !process.env[providerKeyEnv()]
   let usage = { inputTokens: 0, outputTokens: 0, cachedInputTokens: 0 }
   // O provedor às vezes responde "alta demanda" (503). Se isso acontecer antes de qualquer ação,
   // tento mais uma vez: nada foi feito ainda, então repetir é seguro.
-  for (let attempt = 0; attempt < 2 && !state.final; attempt++) {
+  for (let attempt = 0; attempt < 2 && !state.final && !missingKey; attempt++) {
     if (attempt > 0) {
       if (rateLimited || state.steps.length > 0) break
       state.guardrails.push({ rule: 'Nova tentativa', detail: 'O modelo falhou antes de agir; o turno foi repetido uma vez.' })
@@ -255,7 +257,9 @@ export async function runTurn({ conversationId, employee, text, emit }: RunTurnI
     guardrails.push({ rule: 'Falha do modelo', detail: 'Modelo indisponível; pedido de analista atendido direto pelo sistema.' })
   } else if (!output) {
     // Falha do modelo: não deixo o funcionário sem resposta e não finjo que algo foi feito.
-    content = rateLimited
+    content = missingKey
+      ? `O assistente ainda não está configurado: falta a variável ${providerKeyEnv()} no arquivo .env (veja "Como rodar" no README).`
+      : rateLimited
       ? 'Estou recebendo muitas mensagens agora e atingi meu limite por alguns instantes. Pode tentar de novo daqui a pouco? Se preferir, chamo um analista.'
       : 'Tive um problema para processar sua mensagem agora. Pode tentar de novo? Se preferir, posso chamar um analista.'
     quickReplies = ['Tentar de novo', 'Falar com um analista']

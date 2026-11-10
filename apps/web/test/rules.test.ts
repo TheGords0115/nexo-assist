@@ -169,6 +169,18 @@ describe('transferência e agent pausado', () => {
     expect(messages.map((m) => m.role)).toEqual(['user'])
   })
 
+  it('sem a chave do modelo no .env, avisa o que falta em vez de quebrar', async () => {
+    const saved = process.env.GOOGLE_GENERATIVE_AI_API_KEY
+    delete process.env.GOOGLE_GENERATIVE_AI_API_KEY
+    const conversation = await createConversation(ana)
+    const events: ChatStreamEvent[] = []
+    await runTurn({ conversationId: conversation.id, employee: ana, text: 'Oi', emit: (e) => events.push(e) })
+    const reply = (await listMessages(conversation.id)).at(-1)
+    expect(reply?.role).toBe('assistant')
+    expect(reply?.content).toContain('GOOGLE_GENERATIVE_AI_API_KEY')
+    if (saved) process.env.GOOGLE_GENERATIVE_AI_API_KEY = saved
+  })
+
   it('respeita o limite de mensagens da sessão', async () => {
     const conversation = await createConversation(ana)
     await updateConversation(conversation.id, { userMessageCountDelta: 30 })

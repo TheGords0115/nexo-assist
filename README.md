@@ -28,6 +28,14 @@ Abra http://localhost:3000. Qualquer senha funciona para as contas de exemplo:
 | Analista N2 | rafael.lima@nexo.com.br | Console do analista |
 | Analista N1 | julia.castro@nexo.com.br | Console do analista |
 
+No Windows (PowerShell), troque o `cp` por `copy .env.example .env`.
+
+Se algo não subir:
+
+- **Porta 3000 ocupada**: rode com outra porta, por exemplo `PORT=3100 npm run dev` (no PowerShell: `$env:PORT=3100; npm run dev`).
+- **O chat responde que falta a chave**: preencha `GOOGLE_GENERATIVE_AI_API_KEY` no `.env` e reinicie o `npm run dev`. O app também avisa no terminal ao iniciar.
+- **"Atingi meu limite por alguns instantes"**: é o limite por minuto do plano gratuito do Gemini. Espere alguns segundos e mande de novo.
+
 Outros comandos:
 
 ```bash
@@ -112,7 +120,7 @@ O analista vê o mesmo detalhe no console ("ver decisão"), e a lista mostra qua
 
 ## Como garanti a qualidade das decisões
 
-1. **Regras críticas em código, com testes** (`npm test`, 46 testes): prioridade e prazos (inclusive virada de dia e fim de semana), privacidade no serviço, reabertura em 7 dias, duplicidade, confirmação só em turno seguinte, crítico indo para analista, agent pausado, limite de mensagens, retry do cliente. Os testes das tools sobem o serviço de chamados de verdade, em memória.
+1. **Regras críticas em código, com testes** (`npm test`, 47 testes): prioridade e prazos (inclusive virada de dia e fim de semana), privacidade no serviço, reabertura em 7 dias, duplicidade, confirmação só em turno seguinte, crítico indo para analista, agent pausado, limite de mensagens, retry do cliente. Os testes das tools sobem o serviço de chamados de verdade, em memória.
 2. **Evals contra o modelo** (`npm run eval`, `apps/web/evals`): 12 conversas roteirizadas que verificam a **decisão**, não o texto. Por exemplo: o erro 809 no Windows 10 se resolve pela central sem chamado, mas no Windows 11 vira chamado com prioridade alta por causa da reunião; status sem número mostra a lista para escolher; lentidão com o INC-20311 aberto não pode virar chamado novo; o Outlook resolvido há 3 dias deve ser reaberto; o pedido de férias vai para o RH; o chamado de outra pessoa não vaza. Cada execução salva as transcrições e as decisões em `apps/web/evals/results/latest.json`.
 3. **Teste manual** das telas e do fluxo analista ↔ funcionário.
 
